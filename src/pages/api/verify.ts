@@ -34,14 +34,19 @@ export default async function handler(
   try {
     // 调用 Payhip 官方验证接口
     // 文档: https://payhip.com/api-docs#verify-license
+    // Vercel 修正: Payhip API 在验证时似乎只接受 Product Key (ID)，不接受完整 URL
+    // 例如: "https://payhip.com/b/sta2v" -> "sta2v"
+    const productKey =
+      AppConfig.payhip_link.split('/').filter(Boolean).pop() || '';
+
     const payhipRes = await fetch(
       `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
-        AppConfig.payhip_link,
+        productKey,
       )}&license_key=${encodeURIComponent(licenseKey)}`,
       {
         method: 'GET',
         headers: {
-          'payhip-api-key': PAYHIP_API_KEY, // 密钥在这里最安全
+          'payhip-api-key': PAYHIP_API_KEY,
         },
       },
     );
