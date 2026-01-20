@@ -49,14 +49,16 @@ export default async function handler(
 
     const data = await payhipRes.json();
 
-    // 关键修正: 无论成功失败，都把 Payhip 的原始返回打印出来，方便调试
-    console.log('Payhip Response:', JSON.stringify(data));
+    // 修正: Payhip API 文档说返回 success: true，但实际返回的是 data 对象包含 enabled: true
+    // 如果 data.data 存在且 enabled 为 true (或者 license_key 存在)，就算成功
+    const isSuccess =
+      data.success === true || (data.data && data.data.enabled === true);
 
-    if (payhipRes.status === 200 && data.success) {
+    if (payhipRes.status === 200 && isSuccess) {
       return res.status(200).json({
         valid: true,
         licenseMsg: 'License is active',
-        email: data.data.customer_email,
+        email: data.data?.customer_email || '',
       });
     }
 
