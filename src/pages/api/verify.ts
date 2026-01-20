@@ -1,7 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { AppConfig } from '../../utils/AppConfig';
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
@@ -34,39 +32,39 @@ export default async function handler(
   try {
     // 调用 Payhip 官方验证接口
     // 文档: https://payhip.com/api-docs#verify-license
-    // Vercel 修正: Payhip API 在验证时似乎只接受 Product Key (ID)，不接受完整 URL
-    // 例如: "https://payhip.com/b/sta2v" -> "sta2v"
-    const productKey =
-      AppConfig.payhip_link.split('/').filter(Boolean).pop() || '';
+    // 强制使用已验证的 Product ID
+    const productKey = 'sta2v';
 
-    const payhipRes = await fetch(
-      `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
-        productKey,
-      )}&license_key=${encodeURIComponent(licenseKey)}`,
-      {
-        method: 'GET',
-        headers: {
-          'payhip-api-key': PAYHIP_API_KEY,
-        },
+    const apiUrl = `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
+      productKey,
+    )}&license_key=${encodeURIComponent(licenseKey)}`;
+
+    const payhipRes = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'payhip-api-key': PAYHIP_API_KEY,
+        'User-Agent': 'SmartCutPro-Verifier/1.0',
       },
-    );
+    });
 
     const data = await payhipRes.json();
 
-    // Payhip 返回格式: { success: true, data: { ... } }
+    // 关键修正: 无论成功失败，都把 Payhip 的原始返回打印出来，方便调试
+    console.log('Payhip Response:', JSON.stringify(data));
+
     if (payhipRes.status === 200 && data.success) {
-      // 验证成功
       return res.status(200).json({
         valid: true,
         licenseMsg: 'License is active',
-        // 你还可以返回更多信息，比如 customer_email
         email: data.data.customer_email,
       });
     }
-    // 验证失败
+
+    // 验证失败时，返回 Payhip 的原始错误信息
     return res.status(200).json({
       valid: false,
-      licenseMsg: 'License not found or invalid',
+      licenseMsg: data.message || 'License not found or invalid', // 透传 Payhip 的 message
+      payhipDebug: data, // 把整个数据吐出来给我看
     });
   } catch (error) {
     console.error('Verify Error:', error);
