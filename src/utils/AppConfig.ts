@@ -4,5 +4,5 @@ export const AppConfig = {
   description:
     'The professional cutting optimization software for cabinet makers.',
   locale: 'en',
-  payhip_link: 'https://payhip.com/b/YOUR_LINK_HERE', // Placeholder
+  payhip_link: 'https://payhip.com/b/sta2v',
 };

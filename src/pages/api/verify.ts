@@ -32,7 +32,11 @@ export default async function handler(
   try {
     // 调用 Payhip 官方验证接口
     // 文档: https://payhip.com/api-docs#verify-license
-    // 强制使用已验证的 Product ID
+
+    // [注意] HARDCODED PRODUCT ID
+    // 为了确保验证稳定性，这里直接使用了固定的 Product ID: 'sta2v'
+    // 如果你在 Payhip 上更换了产品，或者由其他产品复用此代码，
+    // 请务必将下面的 'sta2v' 修改为新的 Product ID (即 Payhip 产品链接最后那串字符)
     const productKey = 'sta2v';
 
     const apiUrl = `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
