@@ -1,38 +1,58 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+// Define verify response structure
+interface VerifyResponse {
+  valid: boolean;
+  licenseMsg: string; // Used by desktop app
+  message?: string; // Optional fallback
+  email?: string;
+  payhipDebug?: any;
+}
+
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse,
+  res: NextApiResponse<VerifyResponse>,
 ) {
-  // 只允许 POST 请求
+  // [SECURITY] 1. Allow only POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res
+      .status(405)
+      .json({ valid: false, licenseMsg: 'Method Not Allowed' });
   }
 
   const { licenseKey } = req.body;
 
-  if (!licenseKey) {
+  // [SECURITY] 2. Input Validation (Sanitization)
+  if (!licenseKey || typeof licenseKey !== 'string') {
     return res
       .status(400)
-      .json({ valid: false, message: 'Missing license key' });
+      .json({ valid: false, licenseMsg: 'Missing or invalid key format' });
   }
 
-  // 从环境变量获取 Payhip API Key (在 Vercel 后台设置)
-  const { PAYHIP_API_KEY } = process.env;
+  // Trim and limit length (pre-empt brute force with massive payloads)
+  const cleanKey = licenseKey.trim();
+  if (cleanKey.length > 50) {
+    return res.status(400).json({ valid: false, licenseMsg: 'Key too long' });
+  }
 
+  // Regex Check: Alphanumeric and dashes only (Prevent SQLi/Command Injection patterns)
+  const keyPattern = /^[A-Z0-9-]+$/i;
+  if (!keyPattern.test(cleanKey)) {
+    return res
+      .status(400)
+      .json({ valid: false, licenseMsg: 'Invalid characters in key' });
+  }
+
+  // [SECURITY] Configuration Check
+  const { PAYHIP_API_KEY } = process.env;
   if (!PAYHIP_API_KEY) {
-    console.error(
-      'SERVER ERROR: Payhip API Key not set in environment variables.',
-    );
+    console.error('SERVER ERROR: Payhip API Key not set.');
     return res
       .status(500)
-      .json({ valid: false, message: 'Server configuration error' });
+      .json({ valid: false, licenseMsg: 'Server configuration error' });
   }
 
   try {
-    // 调用 Payhip 官方验证接口
-    // 文档: https://payhip.com/api-docs#verify-license
-
     // [注意] HARDCODED PRODUCT ID
     // 为了确保验证稳定性，这里直接使用了固定的 Product ID: 'sta2v'
     // 如果你在 Payhip 上更换了产品，或者由其他产品复用此代码，
@@ -41,7 +61,7 @@ export default async function handler(
 
     const apiUrl = `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
       productKey,
-    )}&license_key=${encodeURIComponent(licenseKey)}`;
+    )}&license_key=${encodeURIComponent(cleanKey)}`; // Use cleaned key
 
     const payhipRes = await fetch(apiUrl, {
       method: 'GET',
@@ -57,7 +77,7 @@ export default async function handler(
     // 如果你想改用 Product Secret Key (在 Vercel 环境变量中设置 PAYHIP_PRODUCT_SECRET)，
     // 可以替换上面的 fetch 代码如下:
     
-    const apiUrlV2 = `https://payhip.com/api/v2/license/verify?product_link=${encodeURIComponent(productKey)}&license_key=${encodeURIComponent(licenseKey)}`;
+    const apiUrlV2 = `https://payhip.com/api/v2/license/verify?product_link=${encodeURIComponent(productKey)}&license_key=${encodeURIComponent(cleanKey)}`;
     const payhipRes = await fetch(apiUrlV2, {
         method: 'GET',
         headers: {
@@ -66,6 +86,7 @@ export default async function handler(
         },
     });
     */
+
     const data = await payhipRes.json();
 
     // 修正: Payhip API 文档说返回 success: true，但实际返回的是 data 对象包含 enabled: true
@@ -84,13 +105,13 @@ export default async function handler(
     // 验证失败时，返回 Payhip 的原始错误信息
     return res.status(200).json({
       valid: false,
-      licenseMsg: data.message || 'License not found or invalid', // 透传 Payhip 的 message
-      payhipDebug: data, // 把整个数据吐出来给我看
+      licenseMsg: data.message || 'License not found or invalid',
+      payhipDebug: data,
     });
   } catch (error) {
     console.error('Verify Error:', error);
     return res
       .status(500)
-      .json({ valid: false, message: 'Verification failed' });
+      .json({ valid: false, licenseMsg: 'Verification failed internal error' });
   }
 }
