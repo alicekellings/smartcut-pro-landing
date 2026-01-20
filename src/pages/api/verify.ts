@@ -51,6 +51,21 @@ export default async function handler(
       },
     });
 
+    /* 
+    // --- [备用方案] Payhip API V2 (Product Secret Key) ---
+    // 文档: https://payhip.com/api-docs#verify-license-v2
+    // 如果你想改用 Product Secret Key (在 Vercel 环境变量中设置 PAYHIP_PRODUCT_SECRET)，
+    // 可以替换上面的 fetch 代码如下:
+    
+    const apiUrlV2 = `https://payhip.com/api/v2/license/verify?product_link=${encodeURIComponent(productKey)}&license_key=${encodeURIComponent(licenseKey)}`;
+    const payhipRes = await fetch(apiUrlV2, {
+        method: 'GET',
+        headers: {
+            'product-secret-key': process.env.PAYHIP_PRODUCT_SECRET!, // 记得在 Vercel 设置这个变量
+            'User-Agent': 'SmartCutPro-Verifier/1.0',
+        },
+    });
+    */
     const data = await payhipRes.json();
 
     // 修正: Payhip API 文档说返回 success: true，但实际返回的是 data 对象包含 enabled: true
