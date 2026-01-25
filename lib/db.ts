@@ -14,11 +14,11 @@ let sql: postgres.Sql<{}> | null = null;
  */
 export function getDatabase(): postgres.Sql<{}> {
   if (!sql) {
-    const connectionString = process.env.POSTGRES_URL;
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
-    if (!connectionString) {
-      throw new Error('Database connection string not configured. Please set POSTGRES_URL environment variable.');
-    }
+  if (!connectionString) {
+    throw new Error('Database connection string not configured. Please set DATABASE_URL environment variable.');
+  }
 
     sql = postgres(connectionString, {
       max: 10, // Maximum connections in pool
