@@ -1,6 +1,6 @@
 /**
  * License Activation API Endpoint
- * Handles first-time license activation with device binding
+ * CORS Fix and Redirect Handling
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -18,7 +18,7 @@ interface ActivateRequest {
   licenseKey: string;
   productId?: string;
   machineId: string;
-  customerEmail?: string; // Optional: customer email from Payhip
+  customerEmail?: string;
 }
 
 interface ActivateResponse {
@@ -33,10 +33,26 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ActivateResponse>,
 ) {
-  // Handle trailing slash for Vercel routing
-  const { pathname } = req.url || '';
-  if (pathname?.endsWith('/')) {
-    return res.redirect(pathname.slice(0, -1));
+  // Handle trailing slash and redirects properly
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      message: 'POST method required for license activation',
+      endpoint: '/api/activate',
+      method: 'POST',
+      example: {
+        licenseKey: "XXXX-XXXXX-XXXX",
+        productId: "photobatchpro",
+        machineId: "device-fingerprint"
+      }
+    });
+  }
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).setHeader('Access-Control-Allow-Origin', '*')
+                  .setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+                  .setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                  .json({});
   }
 
   // Security: Only POST requests allowed
@@ -47,89 +63,97 @@ export default async function handler(
     });
   }
 
+  const { licenseKey, productId, machineId } = req.body as ActivateRequest;
+
+  // Step 1: Input validation
+  if (!licenseKey || typeof licenseKey !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'License key is required',
+    });
+  }
+
+  if (!machineId || typeof machineId !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'Machine ID is required',
+    });
+  }
+
+  // Trim and limit length
+  const cleanKey = licenseKey.trim();
+  if (cleanKey.length > 50) {
+    return res.status(400).json({
+      success: false,
+      message: 'Key too long',
+    });
+  }
+
+  // Validate license key format
+  if (!isValidLicenseKeyFormat(cleanKey)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid license key format',
+    });
+  }
+
+  // Get product configuration
+  const productIdToUse = productId || DEFAULT_PRODUCT_ID;
+  const selectedProduct = PRODUCTS.find((p) => p.id === productIdToUse);
+
+  if (!selectedProduct) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid product ID',
+    });
+  }
+
+  // Configuration check
+  const { PAYHIP_API_KEY } = process.env;
+  if (!PAYHIP_API_KEY) {
+    console.error('[Activate] PAYHIP_API_KEY not configured');
+    return res.status(500).json({
+      success: false,
+      message: 'Server configuration error',
+    });
+  }
+
   try {
-    const { licenseKey, productId, machineId } = req.body as ActivateRequest;
+    // Step 2: Payhip Verification
+    const productKey = selectedProduct.payhipProductId;
 
-    // Step 1: Input validation
-    if (!licenseKey || typeof licenseKey !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'License key is required',
-      });
-    }
+    const apiUrl = `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
+      productKey,
+    )}&license_key=${encodeURIComponent(cleanKey)}`;
 
-    if (!machineId || typeof machineId !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'Machine ID is required',
-      });
-    }
+    console.log(`[Activate] Payhip API URL: ${apiUrl}`);
 
-    const cleanKey = licenseKey.trim().toUpperCase();
-
-    if (!isValidLicenseKeyFormat(cleanKey)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid license key format',
-      });
-    }
-
-    // Get product configuration
-    const productIdToUse = productId || DEFAULT_PRODUCT_ID;
-    const selectedProduct = PRODUCTS.find((p) => p.id === productIdToUse);
-
-    if (!selectedProduct) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID',
-      });
-    }
-
-    // Step 2: Payhip Verification (Layer 1)
-    const { PAYHIP_API_KEY } = process.env;
-    if (!PAYHIP_API_KEY) {
-      console.error('[Activate] PAYHIP_API_KEY not configured');
-      return res.status(500).json({
-        success: false,
-        message: 'Server configuration error',
-      });
-    }
-
-    const payhipRes = await fetch(
-      `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
-        selectedProduct.payhipProductId,
-      )}&license_key=${encodeURIComponent(cleanKey)}`,
-      {
-        headers: {
-          'payhip-api-key': PAYHIP_API_KEY,
-          'User-Agent': `${selectedProduct.name}-Activator/1.0`,
-        },
+    const payhipRes = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'payhip-api-key': PAYHIP_API_KEY,
+        'User-Agent': `${selectedProduct.name}-Activator/1.0`,
       },
-    );
+    });
 
-    const payhipData = await payhipRes.json();
-    const isPayhipValid =
-      payhipData.success === true ||
-      (payhipData.data && payhipData.data.enabled === true);
+    const data = await payhipRes.json();
 
-    if (!isPayhipValid) {
-      console.warn(`[Activate] Invalid Payhip license: ${cleanKey}`);
-      return res.status(400).json({
+    // Check Payhip response
+    const isSuccess = data.success === true || (data.data && data.data.enabled === true);
+
+    if (!isSuccess) {
+      console.log(`[Activate] Payhip failed: ${JSON.stringify(data)}`);
+      return res.status(200).json({
         success: false,
-        message: payhipData.message || 'Invalid license key',
+        message: data.message || `License not found or invalid for ${selectedProduct.name}`,
+        payhipDebug: data,
       });
     }
 
-    // Step 3: Database Checks (Layer 2)
-
-    // Check 3.1: Is license refunded?
+    // Step 3: Database checks
+    // Check if license is refunded
     const refunded = await queryOne(
-      `
-      SELECT * FROM refunded_licenses
-      WHERE license_key = $1
-      ORDER BY refunded_at DESC
-      LIMIT 1
-      `,
+      `SELECT * FROM refunded_licenses WHERE license_key = $1 ORDER BY refunded_at DESC LIMIT 1`,
       [cleanKey],
     );
 
@@ -142,107 +166,81 @@ export default async function handler(
       });
     }
 
-    // Check 3.2: Device limit check
-    const maxActivations = parseInt(
-      process.env.MAX_ACTIVATIONS_PER_LICENSE || '3',
-      10,
-    );
-
+    // Check device limit (max 3 devices per license)
+    const maxActivations = parseInt(process.env.MAX_ACTIVATIONS_PER_LICENSE || '3', 10);
     const activeActivations = await query(
-      `
-      SELECT * FROM activations
-      WHERE license_key = $1 AND status = 'active'
-      `,
+      `SELECT * FROM activations WHERE license_key = $1 AND status = 'active'`,
       [cleanKey],
     );
 
     if (activeActivations.length >= maxActivations) {
-      const devices = activeActivations.map((a: any) => ({
-        machineId: a.machine_id,
-        activatedAt: a.activated_at,
-      }));
-
-      console.warn(
-        `[Activate] License ${cleanKey} already activated on ${activeActivations.length} devices`,
-      );
-
-      return res.status(403).json({
-        success: false,
-        message: `This license is already activated on ${activeActivations.length} device(s). Maximum is ${maxActivations}.`,
-        error: 'DEVICE_LIMIT_EXCEEDED',
-        devices,
-      });
+      const existingMachineIds = activeActivations.map((a: any) => a.machine_id);
+      
+      // Check if this machine is already activated
+      if (!existingMachineIds.includes(machineId)) {
+        console.warn(`[Activate] Device limit exceeded for ${cleanKey}`);
+        return res.status(403).json({
+          success: false,
+          message: `This license is already activated on ${maxActivations} device(s). Maximum is ${maxActivations}.`,
+          error: 'DEVICE_LIMIT_EXCEEDED',
+          current_activations: activeActivations.length,
+        });
+      }
     }
 
     // Step 4: Check if this machine is already activated
     const existingActivation = await queryOne(
-      `
-      SELECT * FROM activations
-      WHERE license_key = $1 AND machine_id = $2
-      `,
+      `SELECT * FROM activations WHERE license_key = $1 AND machine_id = $2`,
       [cleanKey, machineId],
     );
 
-    const offlineGracePeriodDays = parseInt(
-      process.env.OFFLINE_GRACE_PERIOD_DAYS || '30',
-      10,
-    );
-
-    let activationId;
+    const offlineGracePeriodDays = parseInt(process.env.OFFLINE_GRACE_PERIOD_DAYS || '30', 10);
 
     if (existingActivation) {
-      // Re-activation on same device: just refresh timestamps
+      // Re-activation on same device - just refresh timestamps
       console.log(`[Activate] Re-activating existing key on device: ${machineId}`);
-
+      
       await execute(
-        `
-        UPDATE activations
-        SET last_verified_at = CURRENT_TIMESTAMP,
-            offline_expiry = CURRENT_TIMESTAMP + INTERVAL '${offlineGracePeriodDays} days',
-            status = 'active'
-        WHERE id = $1
-        `,
+        `UPDATE activations 
+         SET last_verified_at = CURRENT_TIMESTAMP,
+             offline_expiry = CURRENT_TIMESTAMP + INTERVAL '${offlineGracePeriodDays} days',
+             status = 'active'
+         WHERE id = $1`,
         [existingActivation.id],
       );
-
-      activationId = existingActivation.id;
     } else {
       // New device activation
       console.log(`[Activate] New activation on device: ${machineId}`);
 
-      const expiry = calculateOfflineExpiry(offlineGracePeriodDays);
+      const activationData = {
+        license_key: cleanKey,
+        product_id: productIdToUse,
+        machine_id: machineId,
+        customer_email: data.data?.customer_email || null,
+        offline_expiry: calculateOfflineExpiry(offlineGracePeriodDays),
+        user_agent: req.headers['user-agent'] || null,
+        ip_address: req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || null,
+      };
 
-      const result = await query(
-        `
-        INSERT INTO activations (
-          license_key,
-          product_id,
-          machine_id,
-          customer_email,
-          offline_expiry,
-          user_agent,
-          ip_address
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        `,
+      await execute(
+        `INSERT INTO activations (
+          license_key, product_id, machine_id, customer_email, 
+          offline_expiry, user_agent, ip_address
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          cleanKey,
-          productIdToUse,
-          machineId,
-          payhipData.data?.customer_email || null,
-          new Date(expiry),
-          req.headers['user-agent'] || null,
-          req.headers['x-forwarded-for'] ||
-            req.headers['x-real-ip'] ||
-            req.socket.remoteAddress ||
-            null,
+          activationData.license_key,
+          activationData.product_id,
+          activationData.machine_id,
+          activationData.customer_email,
+          activationData.offline_expiry,
+          activationData.user_agent,
+          activationData.ip_address,
         ],
       );
-
-      activationId = result[0]?.id;
     }
 
-    // Step 5: Generate activation token and license info
+    // Step 5: Generate activation token and response
+    const licenseInfo = getLicenseInfoFromKey(cleanKey, productIdToUse);
     const activationToken = generateActivationToken(
       cleanKey,
       machineId,
@@ -250,9 +248,12 @@ export default async function handler(
       offlineGracePeriodDays,
     );
 
-    const licenseInfo = getLicenseInfoFromKey(cleanKey, productIdToUse);
+    console.log(`[Activate] Activation successful for ${cleanKey}`);
 
-    console.log(`[Activate] Success: ${cleanKey} on ${machineId} (${activationId})`);
+    // Add CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     return res.status(200).json({
       success: true,
@@ -261,8 +262,15 @@ export default async function handler(
       activation_token: activationToken,
       offline_expiry: calculateOfflineExpiry(offlineGracePeriodDays),
     });
-  } catch (error: any) {
+
+  } catch (error: {
     console.error('[Activate] Error:', error);
+    
+    // Add CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
     return res.status(500).json({
       success: false,
       message: 'Activation failed due to server error',
