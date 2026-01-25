@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { DEFAULT_PRODUCT_ID, PRODUCTS } from '../../config/products';
+import { query, queryOne } from '../../../lib/db';
+import { verifyActivationToken, getLicenseTypeFromKey } from '../../../lib/utils/license';
 
 // Define verify response structure
 interface VerifyResponse {
@@ -9,6 +11,8 @@ interface VerifyResponse {
   message?: string; // Optional fallback
   email?: string;
   payhipDebug?: any;
+  license_info?: any;
+  offline_expiry?: string;
 }
 
 export default async function handler(
@@ -86,12 +90,12 @@ export default async function handler(
   }
 
   try {
-    // Use the selected product's Payhip product ID
+    // Step 1: Payhip Verification (Layer 1: Confirm key is authentic)
     const productKey = selectedProduct.payhipProductId;
 
     const apiUrl = `https://payhip.com/api/v1/license/verify?product_link=${encodeURIComponent(
       productKey,
-    )}&license_key=${encodeURIComponent(cleanKey)}`; // Use cleaned key
+    )}&license_key=${encodeURIComponent(cleanKey)}`;
 
     const payhipRes = await fetch(apiUrl, {
       method: 'GET',
@@ -101,49 +105,85 @@ export default async function handler(
       },
     });
 
-    /*
-    // --- [备用方案] Payhip API V2 (Product Secret Key) ---
-    // 文档: https://payhip.com/api-docs#verify-license-v2
-    // 如果你想改用 Product Secret Key (在 Vercel 环境变量中设置 PAYHIP_PRODUCT_SECRET)，
-    // 可以替换上面的 fetch 代码如下:
-
-    const apiUrlV2 = `https://payhip.com/api/v2/license/verify?product_link=${encodeURIComponent(productKey)}&license_key=${encodeURIComponent(cleanKey)}`;
-    const payhipRes = await fetch(apiUrlV2, {
-        method: 'GET',
-        headers: {
-            'product-secret-key': process.env.PAYHIP_PRODUCT_SECRET!, // 记得在 Vercel 设置这个变量
-            'User-Agent': `${selectedProduct.name}-Verifier/1.0`,
-        },
-    });
-    */
-
     const data = await payhipRes.json();
 
-    // 修正: Payhip API 文档说返回 success: true，但实际返回的是 data 对象包含 enabled: true
-    // 如果 data.data 存在且 enabled 为 true (或者 license_key 存在)，就算成功
+    // Payhip API response format: data.data.enabled === true means valid
     const isSuccess =
       data.success === true || (data.data && data.data.enabled === true);
 
-    if (payhipRes.status === 200 && isSuccess) {
+    if (!isSuccess) {
+      // Payhip validation failed
       return res.status(200).json({
-        valid: true,
-        licenseMsg: `${selectedProduct.name} license is active`,
-        email: data.data?.customer_email || '',
+        valid: false,
+        licenseMsg:
+          data.message ||
+          `License not found or invalid for ${selectedProduct.name}`,
+        payhipDebug: data,
       });
     }
 
-    // 验证失败时，返回 Payhip 的原始错误信息
+    // Step 2: Database Checks (Layer 2: Our control)
+    const productId = selectedProduct.id;
+
+    // Check 2.1: Is license refunded?
+    const refunded = await queryOne(
+      `
+      SELECT * FROM refunded_licenses
+      WHERE license_key = $1
+      ORDER BY refunded_at DESC
+      LIMIT 1
+      `,
+      [cleanKey],
+    );
+
+    if (refunded) {
+      console.warn(`[Verify] Refunded license attempted: ${cleanKey}`);
+      return res.status(200).json({
+        valid: false,
+        licenseMsg: `License revoked: ${refunded.reason || 'REFUND'}. Please purchase a new license.`,
+        error: 'LICENSE_REVOKED',
+      });
+    }
+
+    // Step 3: Return successful response with license info
+    const licenseType = getLicenseTypeFromKey(cleanKey, productId);
+
+    // If activation_token is provided in request (online verification), refresh offline expiry
+    let offlineExpiry = undefined;
+    if (req.body.activation_token) {
+      const tokenValid = verifyActivationToken(req.body.activation_token);
+      if (tokenValid.valid) {
+        // Refresh offline grace period
+        const expiryDays = parseInt(process.env.OFFLINE_GRACE_PERIOD_DAYS || '30', 10);
+        offlineExpiry = calculateOfflineExpiry(expiryDays);
+      }
+    }
+
     return res.status(200).json({
-      valid: false,
-      licenseMsg:
-        data.message ||
-        `License not found or invalid for ${selectedProduct.name}`,
-      payhipDebug: data,
+      valid: true,
+      licenseMsg: `${selectedProduct.name} license is active`,
+      email: data.data?.customer_email || '',
+      license_info: {
+        license_type: licenseType,
+        product_id: productId,
+        expiry_date: null, // Permanent license
+      },
+      offline_expiry: offlineExpiry,
     });
   } catch (error) {
-    console.error('Verify Error:', error);
+    console.error('[Verify] Error:', error);
     return res
       .status(500)
       .json({ valid: false, licenseMsg: 'Verification failed internal error' });
   }
+}
+
+/**
+ * Helper function to calculate offline expiry date
+ */
+function calculateOfflineExpiry(days: number): string {
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + days);
+  return expiry.toISOString();
+}
 }
