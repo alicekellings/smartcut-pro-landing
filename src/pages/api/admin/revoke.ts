@@ -10,7 +10,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { query, execute } from '../../../lib/db';
+import { query, execute } from '../../../lib/db.ts';
 
 interface RevokeRequest {
   licenseKey: string;
@@ -27,6 +27,7 @@ interface RevokeResponse {
     revoked_at: string;
     activations_cancelled: number;
   };
+  error?: string;
 }
 
 export default async function handler(

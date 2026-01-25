@@ -65,7 +65,8 @@ export function getLicenseTypeFromKey(licenseKey: string, productId: string): st
     return 'PERSONAL'; // Default
   }
 
-  const type = parts[parts.length - 1].toUpperCase();
+  const typeIndex = parts.length - 1;
+  const type = parts[typeIndex]?.toUpperCase() || 'PERSONAL';
 
   // Validate type exists for product
   const config = LICENSE_CONFIG[productId as keyof typeof LICENSE_CONFIG];
@@ -145,14 +146,22 @@ export function verifyActivationToken(token: string): {
       return { valid: false, error: 'JWT_SECRET not configured' };
     }
 
-    const payload = jwt.verify(token, secret, { algorithms: ['HS256'] });
+    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
 
-    // Check expiry
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      return { valid: false, error: 'Token expired' };
+    // Type guard for the decoded payload
+    if (typeof decoded === 'string') {
+      return { valid: false, error: 'Invalid token payload' };
     }
 
-    return { valid: true, payload };
+    // Check expiry
+    if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
+      const exp = decoded.exp as number | undefined;
+      if (exp && exp < Math.floor(Date.now() / 1000)) {
+        return { valid: false, error: 'Token expired' };
+      }
+    }
+
+    return { valid: true, payload: decoded };
   } catch (error: any) {
     return {
       valid: false,

@@ -38,7 +38,6 @@ This directory contains API endpoints for license key management.
 ## Environment Variables Required
 
 - `PAYHIP_API_KEY`: Payhip API key
-- `PAYHIP_PRODUCT_SECRET`: Payhip product secret
 - `POSTGRES_URL`: Database connection URL
 - `JWT_SECRET`: Secret for JWT signing
 - `MAX_ACTIVATIONS_PER_LICENSE`: Max devices per license (default: 3)

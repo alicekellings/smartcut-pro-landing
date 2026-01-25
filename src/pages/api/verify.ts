@@ -1,8 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 import { DEFAULT_PRODUCT_ID, PRODUCTS } from '../../config/products';
-import { query, queryOne } from '../../../lib/db';
-import { verifyActivationToken, getLicenseTypeFromKey } from '../../../lib/utils/license';
+import { queryOne } from '../../../lib/db';
+import { verifyActivationToken, getLicenseTypeFromKey, calculateOfflineExpiry } from '../../../lib/utils/license';
 
 // Define verify response structure
 interface VerifyResponse {
@@ -13,6 +13,7 @@ interface VerifyResponse {
   payhipDebug?: any;
   license_info?: any;
   offline_expiry?: string;
+  error?: string;
 }
 
 export default async function handler(
@@ -123,7 +124,7 @@ export default async function handler(
     }
 
     // Step 2: Database Checks (Layer 2: Our control)
-    const productId = selectedProduct.id;
+    const productIdentifier = selectedProduct.id;
 
     // Check 2.1: Is license refunded?
     const refunded = await queryOne(
@@ -146,7 +147,7 @@ export default async function handler(
     }
 
     // Step 3: Return successful response with license info
-    const licenseType = getLicenseTypeFromKey(cleanKey, productId);
+    const licenseType = getLicenseTypeFromKey(cleanKey, productIdentifier);
 
     // If activation_token is provided in request (online verification), refresh offline expiry
     let offlineExpiry = undefined;
@@ -165,7 +166,7 @@ export default async function handler(
       email: data.data?.customer_email || '',
       license_info: {
         license_type: licenseType,
-        product_id: productId,
+        product_id: productIdentifier,
         expiry_date: null, // Permanent license
       },
       offline_expiry: offlineExpiry,
@@ -176,14 +177,4 @@ export default async function handler(
       .status(500)
       .json({ valid: false, licenseMsg: 'Verification failed internal error' });
   }
-}
-
-/**
- * Helper function to calculate offline expiry date
- */
-function calculateOfflineExpiry(days: number): string {
-  const expiry = new Date();
-  expiry.setDate(expiry.getDate() + days);
-  return expiry.toISOString();
-}
 }

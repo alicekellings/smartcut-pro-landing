@@ -14,11 +14,11 @@ let sql: postgres.Sql<{}> | null = null;
  */
 export function getDatabase(): postgres.Sql<{}> {
   if (!sql) {
-const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
-  if (!connectionString) {
-    throw new Error('Database connection string not configured. Please set DATABASE_URL environment variable.');
-  }
+    if (!connectionString) {
+      throw new Error('Database connection string not configured. Please set DATABASE_URL environment variable.');
+    }
 
     sql = postgres(connectionString, {
       max: 10, // Maximum connections in pool
@@ -60,8 +60,12 @@ export async function query<T = any>(text: string, params?: any[]): Promise<T[]>
  * Execute a query and return first row
  */
 export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
-  const rows = await query<T>(text, params);
-  return rows.length > 0 ? rows[0] : null;
+  const rows: T[] = await query<T>(text, params);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+  const firstRow = rows[0];
+  return firstRow || null;
 }
 
 /**

@@ -11,6 +11,15 @@ export interface Product {
 // 从AppConfig中提取当前产品信息
 export const PRODUCTS: Product[] = [
   {
+    id: 'photobatchpro',
+    name: 'PhotoBatchPro',
+    title: 'PhotoBatchPro - Professional Photo Batch Processing',
+    description:
+      'Advanced photo batch processing software for professionals.',
+    payhipProductId: 'Xsm5Y', // 实际的Payhip产品ID
+    payhipLink: 'https://payhip.com/b/Xsm5Y',
+  },
+  {
     id: 'smartcut-pro',
     name: 'SmartCut Pro',
     title: 'SmartCut Pro - Stop Wasting Wood',
@@ -33,10 +42,10 @@ export const PRODUCTS: Product[] = [
     title: 'Cutting Optimization Pro - Advanced Material Utilization',
     description:
       'Professional cutting optimization software for material efficiency.',
-    payhipProductId: 'cut2v', // 示例ID，您需要在Payhip中创建实际产品
-    payhipLink: 'https://payhip.com/b/cut2v',
+    payhipProductId: 'sta2v', // 实际的Payhip产品ID
+    payhipLink: 'https://payhip.com/b/sta2v',
   },
 ];
 
 // 默认产品（用于向后兼容）
-export const DEFAULT_PRODUCT_ID = 'smartcut-pro';
+export const DEFAULT_PRODUCT_ID = 'photobatchpro';
