@@ -5,10 +5,11 @@
  * POST /api/init-db?secret=YOUR_SECRET_KEY
  */
 
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { query, execute } from '../../../lib/db';
 import fs from 'fs';
+import type { NextApiRequest, NextApiResponse } from 'next';
 import path from 'path';
+
+import { execute, query } from '../../../lib/db';
 
 export default async function handler(
   req: NextApiRequest,
@@ -22,7 +23,9 @@ export default async function handler(
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    return res
+      .status(405)
+      .json({ success: false, message: 'Method not allowed' });
   }
 
   try {
@@ -34,26 +37,38 @@ export default async function handler(
     // Handle PostgreSQL commands that may have semicolons in them
     const statements = schemaSQL
       .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('--'));
 
     // Execute each statement
     let successCount = 0;
     const errors: string[] = [];
 
-    for (const statement of statements) {
+    // Execute all statements
+    const promises = statements.map(async (statement) => {
       try {
         await execute(statement);
-        successCount++;
+        return { success: true };
       } catch (error: any) {
         // Ignore "already exists" errors
         if (error.message.includes('already exists')) {
-          successCount++;
-        } else {
-          errors.push(`Statement: ${statement.substring(0, 100)}... Error: ${error.message}`);
+          return { success: true };
         }
+        return {
+          success: false,
+          error: `Statement: ${statement.substring(0, 100)}... Error: ${error.message}`,
+        };
       }
-    }
+    });
+
+    const results = await Promise.all(promises);
+    results.forEach((result) => {
+      if (result.success) {
+        successCount += 1;
+      } else if (result.error) {
+        errors.push(result.error);
+      }
+    });
 
     // Test connection and verify tables
     const testResult = await query(`

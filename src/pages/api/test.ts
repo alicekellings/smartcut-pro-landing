@@ -18,7 +18,7 @@ export default async function handler(
       verify: '/api/verify',
       activate: '/api/activate',
       revoke: '/api/admin/revoke',
-      initDb: '/api/init-db'
-    }
+      initDb: '/api/init-db',
+    },
   });
 }

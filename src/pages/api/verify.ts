@@ -1,8 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { DEFAULT_PRODUCT_ID, PRODUCTS } from '../../config/products';
 import { queryOne } from '../../../lib/db';
-import { verifyActivationToken, getLicenseTypeFromKey, calculateOfflineExpiry } from '../../../lib/utils/license';
+import {
+  calculateOfflineExpiry,
+  getLicenseTypeFromKey,
+  verifyActivationToken,
+} from '../../../lib/utils/license';
+import { DEFAULT_PRODUCT_ID, PRODUCTS } from '../../config/products';
 
 // Define verify response structure
 interface VerifyResponse {
@@ -150,12 +154,15 @@ export default async function handler(
     const licenseType = getLicenseTypeFromKey(cleanKey, productIdentifier);
 
     // If activation_token is provided in request (online verification), refresh offline expiry
-    let offlineExpiry = undefined;
+    let offlineExpiry;
     if (req.body.activation_token) {
       const tokenValid = verifyActivationToken(req.body.activation_token);
       if (tokenValid.valid) {
         // Refresh offline grace period
-        const expiryDays = parseInt(process.env.OFFLINE_GRACE_PERIOD_DAYS || '30', 10);
+        const expiryDays = parseInt(
+          process.env.OFFLINE_GRACE_PERIOD_DAYS || '30',
+          10,
+        );
         offlineExpiry = calculateOfflineExpiry(expiryDays);
       }
     }

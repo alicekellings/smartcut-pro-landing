@@ -22,11 +22,27 @@ export const LICENSE_CONFIG = {
         max_vehicles: 0, // Not applicable
       },
       PRO: {
-        features: ['basic_rename', 'basic_exif', 'find_duplicates', 'format_convert', 'resize', 'watermark'],
+        features: [
+          'basic_rename',
+          'basic_exif',
+          'find_duplicates',
+          'format_convert',
+          'resize',
+          'watermark',
+        ],
         max_vehicles: 0,
       },
       ENTERPRISE: {
-        features: ['basic_rename', 'basic_exif', 'find_duplicates', 'format_convert', 'resize', 'watermark', 'batch_process', 'advanced_filters'],
+        features: [
+          'basic_rename',
+          'basic_exif',
+          'find_duplicates',
+          'format_convert',
+          'resize',
+          'watermark',
+          'batch_process',
+          'advanced_filters',
+        ],
         max_vehicles: 0,
       },
     },
@@ -34,15 +50,35 @@ export const LICENSE_CONFIG = {
   vehiclevaultpro: {
     types: {
       PERSONAL: {
-        features: ['vehicle_management', 'fuel_tracking', 'service_records', 'basic_dashboard'],
+        features: [
+          'vehicle_management',
+          'fuel_tracking',
+          'service_records',
+          'basic_dashboard',
+        ],
         max_vehicles: 1,
       },
       PRO: {
-        features: ['vehicle_management', 'fuel_tracking', 'service_records', 'basic_dashboard', 'data_export', 'advanced_reports'],
+        features: [
+          'vehicle_management',
+          'fuel_tracking',
+          'service_records',
+          'basic_dashboard',
+          'data_export',
+          'advanced_reports',
+        ],
         max_vehicles: 5,
       },
       LIFETIME: {
-        features: ['vehicle_management', 'fuel_tracking', 'service_records', 'basic_dashboard', 'data_export', 'advanced_reports', 'priority_support'],
+        features: [
+          'vehicle_management',
+          'fuel_tracking',
+          'service_records',
+          'basic_dashboard',
+          'data_export',
+          'advanced_reports',
+          'priority_support',
+        ],
         max_vehicles: 999, // Unlimited
       },
     },
@@ -54,7 +90,10 @@ export const LICENSE_CONFIG = {
  * Key format: PREFIX-XXXXXX-TYPE
  * e.g., PB-123456-PRO, VV-789012-PERSONAL
  */
-export function getLicenseTypeFromKey(licenseKey: string, productId: string): string {
+export function getLicenseTypeFromKey(
+  licenseKey: string,
+  productId: string,
+): string {
   const parts = licenseKey.split('-');
 
   if (parts.length < 3) {
@@ -80,7 +119,10 @@ export function getLicenseTypeFromKey(licenseKey: string, productId: string): st
 /**
  * Get license info from license key
  */
-export function getLicenseInfoFromKey(licenseKey: string, productId: string): LicenseInfo {
+export function getLicenseInfoFromKey(
+  licenseKey: string,
+  productId: string,
+): LicenseInfo {
   const licenseType = getLicenseTypeFromKey(licenseKey, productId);
   const config = LICENSE_CONFIG[productId as keyof typeof LICENSE_CONFIG];
 
@@ -124,7 +166,7 @@ export function generateActivationToken(
     license_key: licenseKey,
     machine_id: machineId,
     product_id: productId,
-    expiry: Math.floor(Date.now() / 1000) + (expiryDays * 24 * 60 * 60),
+    expiry: Math.floor(Date.now() / 1000) + expiryDays * 24 * 60 * 60,
     iat: Math.floor(Date.now() / 1000),
   };
 

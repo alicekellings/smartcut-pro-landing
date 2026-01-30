@@ -10,7 +10,7 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { query, execute } from '../../../lib/db';
+import { execute, query } from '../../../../lib/db';
 
 interface RevokeRequest {
   licenseKey: string;
@@ -73,7 +73,9 @@ export default async function handler(
 
     const cleanKey = licenseKey.trim().toUpperCase();
 
-    console.log(`[Admin Revoke] Revoking license: ${cleanKey}, Reason: ${reason}`);
+    console.log(
+      `[Admin Revoke] Revoking license: ${cleanKey}, Reason: ${reason}`,
+    );
 
     // Step 1: Check if already refunded
     const existingRefund = await query(

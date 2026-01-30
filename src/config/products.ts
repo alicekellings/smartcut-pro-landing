@@ -14,8 +14,7 @@ export const PRODUCTS: Product[] = [
     id: 'photobatchpro',
     name: 'PhotoBatchPro',
     title: 'PhotoBatchPro - Professional Photo Batch Processing',
-    description:
-      'Advanced photo batch processing software for professionals.',
+    description: 'Advanced photo batch processing software for professionals.',
     payhipProductId: 'Xsm5Y', // 实际的Payhip产品ID
     payhipLink: 'https://payhip.com/b/Xsm5Y',
   },

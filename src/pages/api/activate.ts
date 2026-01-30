@@ -4,9 +4,14 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
+
+import { execute, query, queryOne } from '../../../lib/db';
+import {
+  calculateOfflineExpiry,
+  generateActivationToken,
+  getLicenseTypeFromKey,
+} from '../../../lib/utils/license';
 import { DEFAULT_PRODUCT_ID, PRODUCTS } from '../../config/products';
-import { query, queryOne, execute } from '../../../lib/db';
-import { getLicenseTypeFromKey, generateActivationToken, calculateOfflineExpiry } from '../../../lib/utils/license';
 
 // Define activation response structure
 interface ActivateResponse {
@@ -34,7 +39,7 @@ export default async function handler(
     return res.status(200).json({
       success: true,
       message: 'CORS preflight successful',
-      status: 'ready'
+      status: 'ready',
     });
   }
 
@@ -47,7 +52,7 @@ export default async function handler(
       endpoints: {
         activate: '/api/activate',
         verify: '/api/verify',
-        revoke: '/api/admin/revoke'
+        revoke: '/api/admin/revoke',
       },
       example: {
         activate: {
@@ -55,10 +60,10 @@ export default async function handler(
           data: {
             licenseKey: 'XXXX-XXXXX-XXXX',
             productId: 'photobatchpro',
-            machineId: 'device-fingerprint'
-          }
-        }
-      }
+            machineId: 'device-fingerprint',
+          },
+        },
+      },
     });
   }
 
@@ -66,7 +71,7 @@ export default async function handler(
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,
-      message: 'Method not allowed'
+      message: 'Method not allowed',
     });
   }
 
@@ -76,14 +81,14 @@ export default async function handler(
   if (!licenseKey || typeof licenseKey !== 'string') {
     return res.status(400).json({
       success: false,
-      message: 'License key is required'
+      message: 'License key is required',
     });
   }
 
   if (!machineId || typeof machineId !== 'string') {
     return res.status(400).json({
       success: false,
-      message: 'Machine ID is required'
+      message: 'Machine ID is required',
     });
   }
 
@@ -91,7 +96,7 @@ export default async function handler(
   if (productId && (typeof productId !== 'string' || !productId.trim())) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid product ID format'
+      message: 'Invalid product ID format',
     });
   }
 
@@ -100,7 +105,7 @@ export default async function handler(
   if (cleanKey.length > 50) {
     return res.status(400).json({
       success: false,
-      message: 'Key too long'
+      message: 'Key too long',
     });
   }
 
@@ -111,7 +116,7 @@ export default async function handler(
     if (!selectedProduct) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid product ID'
+        message: 'Invalid product ID',
       });
     }
   } else {
@@ -124,7 +129,7 @@ export default async function handler(
       if (!selectedProduct) {
         return res.status(500).json({
           success: false,
-          message: 'No products configured'
+          message: 'No products configured',
         });
       }
     }
@@ -135,7 +140,7 @@ export default async function handler(
   if (!keyPattern.test(cleanKey)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid characters in key'
+      message: 'Invalid characters in key',
     });
   }
 
@@ -145,7 +150,7 @@ export default async function handler(
     console.error('SERVER ERROR: Payhip API Key not set.');
     return res.status(500).json({
       success: false,
-      message: 'Server configuration error'
+      message: 'Server configuration error',
     });
   }
 
@@ -175,7 +180,9 @@ export default async function handler(
       // Payhip validation failed
       return res.status(200).json({
         success: false,
-        message: data.message || `License not found or invalid for ${selectedProduct.name}`
+        message:
+          data.message ||
+          `License not found or invalid for ${selectedProduct.name}`,
       });
     }
 
@@ -211,14 +218,19 @@ export default async function handler(
       [cleanKey],
     );
 
-    const maxActivations = parseInt(process.env.MAX_ACTIVATIONS_PER_LICENSE || '3', 10);
+    const maxActivations = parseInt(
+      process.env.MAX_ACTIVATIONS_PER_LICENSE || '3',
+      10,
+    );
     if (existingActivations.length >= maxActivations) {
       // Check if this machine is already registered
-      const machineActivation = existingActivations.find((a: any) => a.machine_id === machineId);
+      const machineActivation = existingActivations.find(
+        (a: any) => a.machine_id === machineId,
+      );
       if (!machineActivation) {
         return res.status(200).json({
           success: false,
-          message: `Maximum activations reached (${maxActivations}). Please deactivate on another device or contact support.`
+          message: `Maximum activations reached (${maxActivations}). Please deactivate on another device or contact support.`,
         });
       }
     }
@@ -226,7 +238,7 @@ export default async function handler(
     // Step 3: Record activation in database
     const activationExists = await queryOne(
       'SELECT * FROM activations WHERE license_key = $1 AND machine_id = $2',
-      [cleanKey, machineId]
+      [cleanKey, machineId],
     );
 
     if (activationExists) {
@@ -239,7 +251,7 @@ export default async function handler(
             status = 'active'
         WHERE license_key = $2 AND machine_id = $3
         `,
-        [data.data?.customer_email, cleanKey, machineId]
+        [data.data?.customer_email || '', cleanKey, machineId],
       );
     } else {
       // Create new activation record
@@ -255,7 +267,7 @@ export default async function handler(
           status
         ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'active')
         `,
-        [cleanKey, productIdToUse, machineId, data.data?.customer_email]
+        [cleanKey, productIdToUse, machineId, data.data?.customer_email || ''],
       );
     }
 
@@ -263,11 +275,19 @@ export default async function handler(
     const licenseType = getLicenseTypeFromKey(cleanKey, productIdToUse);
 
     // Calculate offline grace period
-    const expiryDays = parseInt(process.env.OFFLINE_GRACE_PERIOD_DAYS || '30', 10);
+    const expiryDays = parseInt(
+      process.env.OFFLINE_GRACE_PERIOD_DAYS || '30',
+      10,
+    );
     const offlineExpiryDate = calculateOfflineExpiry(expiryDays);
 
     // Generate activation token for offline validation
-    const activationToken = generateActivationToken(cleanKey, machineId, productIdToUse, expiryDays);
+    const activationToken = generateActivationToken(
+      cleanKey,
+      machineId,
+      productIdToUse,
+      expiryDays,
+    );
 
     return res.status(200).json({
       success: true,
@@ -285,7 +305,7 @@ export default async function handler(
     console.error('[Activate] Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Activation failed internal error'
+      message: 'Activation failed internal error',
     });
   }
 }

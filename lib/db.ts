@@ -14,10 +14,13 @@ let sql: postgres.Sql<{}> | null = null;
  */
 export function getDatabase(): postgres.Sql<{}> {
   if (!sql) {
-    const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    const connectionString =
+      process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
     if (!connectionString) {
-      throw new Error('Database connection string not configured. Please set DATABASE_URL environment variable.');
+      throw new Error(
+        'Database connection string not configured. Please set DATABASE_URL environment variable.',
+      );
     }
 
     sql = postgres(connectionString, {
@@ -46,7 +49,10 @@ export async function closeDatabase(): Promise<void> {
 /**
  * Execute a raw SQL query
  */
-export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
+export async function query<T = any>(
+  text: string,
+  params?: any[],
+): Promise<T[]> {
   const db = getDatabase();
   try {
     return await db.unsafe(text, params);
@@ -59,7 +65,10 @@ export async function query<T = any>(text: string, params?: any[]): Promise<T[]>
 /**
  * Execute a query and return first row
  */
-export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
+export async function queryOne<T = any>(
+  text: string,
+  params?: any[],
+): Promise<T | null> {
   const rows: T[] = await query<T>(text, params);
   if (!Array.isArray(rows) || rows.length === 0) {
     return null;
